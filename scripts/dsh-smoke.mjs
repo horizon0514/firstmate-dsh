@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { once } from 'node:events'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -32,8 +31,6 @@ async function run(command, captureStdout = false) {
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   let output = ''
-  let timedOut = false
-  let forced
   const collect = chunk => {
     output = `${output}${chunk.toString()}`.slice(-MAX_OUTPUT_CHARS)
   }
@@ -45,24 +42,39 @@ async function run(command, captureStdout = false) {
     collect(chunk)
     process.stderr.write(chunk)
   })
-  const timer = setTimeout(() => {
-    timedOut = true
-    terminateTree(child, 'SIGTERM')
-    forced = setTimeout(() => terminateTree(child, 'SIGKILL'), 10_000)
-  }, COMMAND_TIMEOUT_MS)
 
   return await new Promise((resolveOutput, reject) => {
-    child.once('error', reject)
-    child.once('close', (code, signal) => {
+    let settled = false
+    let timedOut = false
+    let forced
+    const settle = callback => {
+      if (settled) return
+      settled = true
       clearTimeout(timer)
       if (forced !== undefined) clearTimeout(forced)
+      callback()
+    }
+    const timer = setTimeout(() => {
+      timedOut = true
+      terminateTree(child, 'SIGTERM')
+      forced = setTimeout(() => {
+        terminateTree(child, 'SIGKILL')
+        child.stdout.destroy()
+        child.stderr.destroy()
+        settle(() => reject(new Error(
+          `DSH command timed out after ${COMMAND_TIMEOUT_MS}ms: ${command.join(' ')}\n${cleanOutput(output)}`,
+        )))
+      }, 10_000)
+    }, COMMAND_TIMEOUT_MS)
+    child.once('error', error => settle(() => reject(error)))
+    child.once('close', (code, signal) => {
       const clean = cleanOutput(output)
       if (timedOut) {
-        reject(new Error(`DSH command timed out after ${COMMAND_TIMEOUT_MS}ms: ${command.join(' ')}\n${clean}`))
+        settle(() => reject(new Error(`DSH command timed out after ${COMMAND_TIMEOUT_MS}ms: ${command.join(' ')}\n${clean}`)))
       } else if (code !== 0) {
-        reject(new Error(`DSH command failed (code ${code}, signal ${signal}): ${command.join(' ')}\n${clean}`))
+        settle(() => reject(new Error(`DSH command failed (code ${code}, signal ${signal}): ${command.join(' ')}\n${clean}`)))
       } else {
-        resolveOutput(clean)
+        settle(() => resolveOutput(clean))
       }
     })
   })
@@ -82,6 +94,7 @@ async function startWeb() {
   const child = spawn(executable, args(['web', '--host', '127.0.0.1', '--port', '0']), {
     cwd: project,
     env: environment,
+    detached: process.platform !== 'win32',
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   server = child
@@ -112,14 +125,29 @@ async function startWeb() {
 
 async function stopWeb() {
   if (server === undefined || server.exitCode !== null || server.signalCode !== null) return
-  server.kill('SIGTERM')
-  const forced = setTimeout(() => { server?.kill('SIGKILL') }, 10_000)
-  forced.unref?.()
-  try {
-    await once(server, 'exit')
-  } finally {
-    clearTimeout(forced)
+  terminateTree(server, 'SIGTERM')
+  if (!await waitForExit(server, 10_000)) {
+    terminateTree(server, 'SIGKILL')
+    await waitForExit(server, 2_000)
   }
+  server.stdout.destroy()
+  server.stderr.destroy()
+  server.unref()
+}
+
+function waitForExit(child, timeoutMs) {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true)
+  return new Promise(resolveExit => {
+    const timer = setTimeout(() => {
+      child.removeListener('exit', onExit)
+      resolveExit(false)
+    }, timeoutMs)
+    const onExit = () => {
+      clearTimeout(timer)
+      resolveExit(true)
+    }
+    child.once('exit', onExit)
+  })
 }
 
 try {
