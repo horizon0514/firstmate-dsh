@@ -45,10 +45,12 @@ The package exposes one DSH bundle layer through `package.json#dsh.bundle` and `
 
 - Creates or resumes one deterministic parent Agent session per canonical workspace.
 - Starts native continuable workers with `ctx.subagents.startContinuable`.
+- Discovers a persisted worker with `ctx.subagents.listChildren` before restart follow-up.
 - Uses `followup` for decisions, revisions, retries, and restart recovery.
 - Uses `interrupt` for cancellation and stale recovery, waiting up to 30 seconds for the lifecycle end event.
 - Converts `subagent/start`, `subagent/end`, and `session/event` into structured Firstmate events.
 - Rejects stale events whose worker identity no longer matches the task.
+- Treats a malformed terminal result envelope as worker drift and routes it through bounded recovery rather than presenting it for review.
 - Uses Git CLI only to collect changed files, diff, and current commit for review evidence; task state never depends on terminal text.
 
 ### `firstmate-web`
@@ -89,3 +91,16 @@ The verified boundary is DSH `0.1.0-rc.6`:
 - `sidebar.footer.action` and `shell.overlay` slots
 
 No DSH core file is forked or patched. Version-specific calls remain in `firstmate-dsh` and the Web transport layer, and CI installs the plugin into an isolated real Web profile on every change.
+
+The named DSH worker controls and their service-level equivalents are one compatibility boundary, not a second runtime:
+
+| DSH capability | Firstmate use |
+| --- | --- |
+| `list_agents` | `ctx.subagents.listChildren` verifies the durable continuable child before restart recovery. |
+| `send_message` | `ctx.subagents.followup` sends decisions, revision feedback, retries, and recovery instructions. |
+| `interrupt_agent` | `ctx.subagents.interrupt` stops cancellation and stale-worker turns under the exact parent authority. |
+| `report` | DSH installs the child-scoped tool for continuable workers; the worker prompt requires the structured envelope to be reported before the identical terminal envelope. |
+
+The adapter consumes the structured lifecycle end event as its deterministic completion boundary. DSH persists the child transcript, `report` handoff, and lifecycle notices in Sessions for recovery and future diagnostics.
+
+Attention items are durable task transitions, not transient notifications. `decision_required`, `review_ready`, and `blocked` are persisted in the ledger with timestamped history, and the Web inbox derives only those three attention classes.

@@ -4,6 +4,7 @@ export const FIRSTMATE_WORKER_PERSONA = `You are a Firstmate worker executing ex
 Work directly in the assigned workspace. Inspect before editing, keep changes focused, and run the relevant tests.
 Do not ask the end user routine questions. When a decision is truly required, stop and return the decision_required JSON envelope.
 Do not merge, deploy, publish packages, or create releases.
+Before finishing, call DSH's report tool once with the same self-contained JSON envelope when that tool is available.
 Your final assistant message must contain only one JSON object matching one of the documented envelopes.`
 
 export function initialWorkerPrompt(task: FirstmateTask): string {
@@ -21,5 +22,5 @@ Return only one JSON object:
 - Blocked after your own safe recovery attempts: {"kind":"blocked","reason":"..."}
 - Ready for review: {"kind":"review_ready","summary":"...","files":["..."],"diff":"optional concise diff or stat","commit":"optional hash","tests":[{"command":"...","outcome":"passed|failed|not_run","summary":"..."}],"risks":["..."],"incomplete":["..."]}
 
-Do not wrap the JSON in Markdown.`
+Call report once with exactly that JSON, then use the same JSON as your final assistant message. If report is unavailable, still return the final JSON. Do not wrap the JSON in Markdown.`
 }

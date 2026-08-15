@@ -48,8 +48,9 @@ export class FakeWorkerProvider implements WorkerProvider {
     this.messages.push({ taskId: task.id, message })
   }
 
-  async interrupt(task: FirstmateTask, _reason: string): Promise<void> {
+  async interrupt(task: FirstmateTask, reason: string): Promise<void> {
     this.interruptedTaskIds.push(task.id)
+    this.interrupted(task.id, reason)
   }
 
   subscribe(listener: (event: WorkerEvent) => void): () => void {

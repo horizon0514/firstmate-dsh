@@ -18,6 +18,7 @@ export class FirstmateScheduler {
   private unsubscribeWorker: (() => void) | undefined
   private heartbeatTimer: ReturnType<typeof setInterval> | undefined
   private readonly cancelling = new Set<string>()
+  private readonly recoveringStale = new Set<string>()
   private stopped = false
 
   constructor(
@@ -148,13 +149,17 @@ export class FirstmateScheduler {
   async recoverStale(now: Date): Promise<void> {
     const stale = this.ledger.list().filter(task => task.status === 'running'
       && task.worker !== undefined
+      && !this.recoveringStale.has(task.id)
       && now.getTime() - Date.parse(task.worker.lastHeartbeatAt) > this.options.staleAfterMs)
     await Promise.all(stale.map(async task => {
       let reason = 'worker stopped responding'
+      this.recoveringStale.add(task.id)
       try {
         await this.workers.interrupt(task, 'worker heartbeat timed out')
       } catch (error: unknown) {
         reason += `; interrupt failed: ${messageOf(error)}`
+      } finally {
+        this.recoveringStale.delete(task.id)
       }
       await this.handleFailure(task.id, reason)
     }))
@@ -222,6 +227,7 @@ export class FirstmateScheduler {
     const task = this.ledger.get(event.taskId)
     if (task === undefined || task.status === 'completed' || task.status === 'cancelled'
       || this.cancelling.has(task.id)) return
+    if (event.type === 'interrupted' && this.recoveringStale.has(task.id)) return
     if ('workerId' in event && task.worker !== undefined && task.worker.id !== event.workerId) return
     switch (event.type) {
       case 'started':

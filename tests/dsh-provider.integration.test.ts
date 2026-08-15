@@ -34,6 +34,14 @@ describe('DshWorkerProvider', () => {
       subagents: {
         getProvider: vi.fn(() => ({ prepareContinuable: vi.fn() })),
         list: vi.fn(() => ['spawn']),
+        listChildren: vi.fn(async () => [{
+          kind: 'child',
+          id: 'fake-child-1',
+          mode: 'continuable',
+          label: 'firstmate:dsh-task',
+          activity: 'inactive',
+          hasChildren: false,
+        }]),
         startContinuable: vi.fn(async (request: any) => {
           starts.push(request)
           callbacks.get('subagent/end')?.({
@@ -89,6 +97,7 @@ describe('DshWorkerProvider', () => {
       },
     })
     expect(starts[0].request.prompt[0].text).toContain('Execute this software task')
+    expect(starts[0].request.prompt[0].text).toContain('Call report once')
 
     await vi.waitFor(() => expect(events.find(event => event.type === 'review_ready')).toMatchObject({
       taskId: 'dsh-task',
@@ -115,6 +124,19 @@ describe('DshWorkerProvider', () => {
     await provider.restore(running, new AbortController().signal)
     expect(followups).toHaveLength(2)
     expect(followups[0]?.[3]).toMatchObject({ source: { kind: 'plugin', plugin: 'firstmate-dsh' } })
+    expect(raw.subagents.listChildren).toHaveBeenCalledWith(parent.id, expect.any(AbortSignal))
+
+    callbacks.get('subagent/end')?.({
+      id: 'fake-child-1',
+      runId: 'run-drift',
+      provider: 'spawn',
+      stopReason: 'completed',
+      lastAssistantMessage: [{ type: 'text', text: 'worked on something else' }],
+    })
+    await vi.waitFor(() => expect(events.find(event => event.type === 'failed')).toMatchObject({
+      taskId: 'dsh-task',
+      reason: expect.stringContaining('drifted from the structured result contract'),
+    }))
 
     await provider.interrupt(running, 'test cancellation')
     expect(events.at(-1)).toMatchObject({ type: 'interrupted', taskId: 'dsh-task', workerId: 'fake-child-1' })

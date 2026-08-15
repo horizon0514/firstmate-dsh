@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fallbackReviewResult, parseWorkerEnvelope } from '../src/firstmate-manager/result.ts'
+import { parseWorkerEnvelope } from '../src/firstmate-manager/result.ts'
 
 describe('worker result envelopes', () => {
   it('parses decision, blocker, and review envelopes', () => {
@@ -26,13 +26,9 @@ describe('worker result envelopes', () => {
     })
   })
 
-  it('rejects malformed envelopes and preserves plain output as review evidence', () => {
+  it('rejects malformed envelopes so the scheduler can recover worker drift', () => {
     expect(() => parseWorkerEnvelope('{"kind":"decision_required","question":""}')).toThrow(/question/)
     expect(() => parseWorkerEnvelope('{"kind":"unknown"}')).toThrow(/unknown/)
     expect(() => parseWorkerEnvelope('not json')).toThrow()
-    expect(fallbackReviewResult('Worker summary', 'bad JSON')).toMatchObject({
-      summary: 'Worker summary',
-      risks: ['Structured worker report unavailable: bad JSON'],
-    })
   })
 })

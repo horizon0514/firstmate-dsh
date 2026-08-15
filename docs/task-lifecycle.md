@@ -54,9 +54,9 @@ Firstmate does not merge or deploy accepted work.
 
 ## Failure and recovery
 
-Worker start failures, failed lifecycle endings, interruptions, stale heartbeats, restart restoration failures, and failed followups enter one bounded recovery path. Every automatic attempt increments `retryCount` and adds a history entry. When the configured budget is exceeded, the task becomes `blocked`; delivery failure during an attempted recovery also blocks the task.
+Worker start failures, failed lifecycle endings, interruptions, stale heartbeats, restart restoration failures, failed followups, and malformed structured result envelopes enter one bounded recovery path. A malformed envelope is deterministic evidence that the worker drifted from its result contract; it is never promoted to `review_ready`. Every automatic attempt increments `retryCount` and adds a history entry. When the configured budget is exceeded, the task becomes `blocked`; delivery failure during an attempted recovery also blocks the task.
 
-For a stale running worker, Firstmate first asks DSH to interrupt it, then records the failure. Cancellation waits for a matching structured DSH end event, with a 30-second bound. Events from an old worker id are ignored after task ownership changes.
+For a stale running worker, Firstmate first asks DSH to interrupt it, then records the failure once. The matching interruption lifecycle event is suppressed while stale recovery owns that failure, so one abort consumes exactly one retry. Cancellation waits for a matching structured DSH end event, with a 30-second bound. Events from an old worker id are ignored after task ownership changes.
 
 On DSH restart, running tasks with a worker id reattach through the persistent DSH parent and continuable child session. Running tasks without a worker id are requeued. Decision, review, and blocked states need no worker restoration and remain durable attention items.
 

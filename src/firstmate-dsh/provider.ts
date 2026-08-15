@@ -8,7 +8,7 @@ import type { SubagentRunEndInfo, SubagentRunInfo } from '@deepseek-ai/dsh-subag
 import type { FirstmateTask, WorkerEvent } from '../shared/types.ts'
 import type { WorkerProvider, WorkerStart } from '../firstmate-core/worker-provider.ts'
 import { FIRSTMATE_WORKER_PERSONA, initialWorkerPrompt } from '../firstmate-manager/prompt.ts'
-import { fallbackReviewResult, parseWorkerEnvelope } from '../firstmate-manager/result.ts'
+import { parseWorkerEnvelope } from '../firstmate-manager/result.ts'
 import { collectGitArtifacts, mergeGitArtifacts } from './git-artifacts.ts'
 
 export interface DshWorkerProviderConfig {
@@ -73,10 +73,16 @@ export class DshWorkerProvider implements WorkerProvider {
 
   async restore(task: FirstmateTask, signal: AbortSignal): Promise<void> {
     this.assertActive()
-    if (task.worker === undefined) throw new Error(`Task ${task.id} has no worker to restore`)
-    this.track(task, task.worker.id)
+    const worker = task.worker
+    if (worker === undefined) throw new Error(`Task ${task.id} has no worker to restore`)
+    this.track(task, worker.id)
     const parent = await this.parentFor(task.workspace, signal)
-    await this.ctx.subagents.followup(parent, SessionId(task.worker.id), [{
+    const children = await this.ctx.subagents.listChildren(parent.id, signal)
+    const child = children.find(entry => entry.id === worker.id)
+    if (child?.kind !== 'child' || child.mode !== 'continuable') {
+      throw new Error(`DSH worker ${worker.id} is not a durable continuable child of ${parent.id}`)
+    }
+    await this.ctx.subagents.followup(parent, SessionId(worker.id), [{
       type: 'text',
       text: 'DSH restarted while this task was active. Inspect the durable session and current workspace, recover safely, then continue to a structured Firstmate result.',
     }], {
@@ -178,9 +184,13 @@ export class DshWorkerProvider implements WorkerProvider {
     try {
       envelope = parseWorkerEnvelope(text)
     } catch (error: unknown) {
-      const fallback = fallbackReviewResult(text, error instanceof Error ? error.message : String(error))
-      const result = mergeGitArtifacts(fallback, await collectGitArtifacts(task.workspace))
-      this.emit({ type: 'review_ready', taskId, workerId: info.id, at, result })
+      this.emit({
+        type: 'failed',
+        taskId,
+        workerId: info.id,
+        at,
+        reason: `worker drifted from the structured result contract: ${error instanceof Error ? error.message : String(error)}`,
+      })
       return
     }
     if (envelope.kind === 'decision_required') {

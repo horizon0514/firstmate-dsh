@@ -157,6 +157,10 @@ try {
   console.log('Verifying the composed DSH profile...')
   const config = await run(['web', '--dump-config'], true)
   assert.match(config, /- id: firstmate\s+name: firstmate-dsh/)
+  assert.match(config, /- id: agent\s+name: '@deepseek-ai\/dsh-agent'/)
+  assert.match(config, /- id: subagent\s+name: '@deepseek-ai\/dsh-subagent'/)
+  assert.match(config, /- id: tool-subagent-report\s+name: '@deepseek-ai\/dsh-tool-subagent-report'/)
+  assert.match(config, /- id: session-persistence-jsonl\s+name: '@deepseek-ai\/dsh-session-persistence-jsonl'/)
 
   console.log('Starting the isolated DSH Web host...')
   const url = await startWeb()

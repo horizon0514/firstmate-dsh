@@ -170,6 +170,7 @@ describe('Firstmate scheduler integration', () => {
     await suite.scheduler.recoverStale(current)
     expect(suite.workers.interruptedTaskIds).toContain(taskId)
     expect(suite.ledger.get(taskId!)).toMatchObject({ status: 'running', retryCount: 1 })
+    expect(suite.ledger.get(taskId!)?.history.filter(entry => entry.reason.includes('automatic retry'))).toHaveLength(1)
 
     suite.workers.interrupted(taskId!, 'worker exited')
     await vi.waitFor(() => expect(suite.ledger.get(taskId!)).toMatchObject({ status: 'blocked', retryCount: 2 }))

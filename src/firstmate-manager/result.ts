@@ -72,13 +72,3 @@ export function parseWorkerEnvelope(text: string): WorkerEnvelope {
     },
   }
 }
-
-export function fallbackReviewResult(text: string, reason: string): ReviewResult {
-  return {
-    summary: text.trim() || 'Worker completed without a written summary.',
-    files: [],
-    tests: [],
-    risks: [`Structured worker report unavailable: ${reason}`],
-    incomplete: [],
-  }
-}
