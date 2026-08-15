@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 
 const DSH_VERSION = '0.1.0-rc.6'
+const COMMAND_TIMEOUT_MS = 5 * 60_000
 const START_TIMEOUT_MS = 90_000
 const execFileAsync = promisify(execFile)
 const project = resolve(import.meta.dirname, '..')
@@ -30,7 +31,7 @@ async function run(command) {
     env: environment,
     encoding: 'utf8',
     maxBuffer: 8 * 1024 * 1024,
-    timeout: START_TIMEOUT_MS,
+    timeout: COMMAND_TIMEOUT_MS,
   })
   return cleanOutput(`${stdout}\n${stderr}`)
 }
