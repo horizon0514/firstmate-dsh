@@ -1,15 +1,14 @@
 import assert from 'node:assert/strict'
-import { execFile, spawn } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { promisify } from 'node:util'
 
 const DSH_VERSION = '0.1.0-rc.6'
-const COMMAND_TIMEOUT_MS = 5 * 60_000
+const COMMAND_TIMEOUT_MS = 15 * 60_000
 const START_TIMEOUT_MS = 90_000
-const execFileAsync = promisify(execFile)
+const MAX_OUTPUT_CHARS = 8 * 1024 * 1024
 const project = resolve(import.meta.dirname, '..')
 const dshHome = await mkdtemp(join(tmpdir(), 'firstmate-dsh-smoke-'))
 const executable = process.platform === 'win32' ? 'npx.cmd' : 'npx'
@@ -25,15 +24,58 @@ function cleanOutput(value) {
   return value.replaceAll(/\x1B\[[0-?]*[ -/]*[@-~]/g, '')
 }
 
-async function run(command) {
-  const { stdout, stderr } = await execFileAsync(executable, args(command), {
+async function run(command, captureStdout = false) {
+  const child = spawn(executable, args(command), {
     cwd: project,
     env: environment,
-    encoding: 'utf8',
-    maxBuffer: 8 * 1024 * 1024,
-    timeout: COMMAND_TIMEOUT_MS,
+    detached: process.platform !== 'win32',
+    stdio: ['ignore', 'pipe', 'pipe'],
   })
-  return cleanOutput(`${stdout}\n${stderr}`)
+  let output = ''
+  let timedOut = false
+  let forced
+  const collect = chunk => {
+    output = `${output}${chunk.toString()}`.slice(-MAX_OUTPUT_CHARS)
+  }
+  child.stdout.on('data', chunk => {
+    collect(chunk)
+    if (!captureStdout) process.stdout.write(chunk)
+  })
+  child.stderr.on('data', chunk => {
+    collect(chunk)
+    process.stderr.write(chunk)
+  })
+  const timer = setTimeout(() => {
+    timedOut = true
+    terminateTree(child, 'SIGTERM')
+    forced = setTimeout(() => terminateTree(child, 'SIGKILL'), 10_000)
+  }, COMMAND_TIMEOUT_MS)
+
+  return await new Promise((resolveOutput, reject) => {
+    child.once('error', reject)
+    child.once('close', (code, signal) => {
+      clearTimeout(timer)
+      if (forced !== undefined) clearTimeout(forced)
+      const clean = cleanOutput(output)
+      if (timedOut) {
+        reject(new Error(`DSH command timed out after ${COMMAND_TIMEOUT_MS}ms: ${command.join(' ')}\n${clean}`))
+      } else if (code !== 0) {
+        reject(new Error(`DSH command failed (code ${code}, signal ${signal}): ${command.join(' ')}\n${clean}`))
+      } else {
+        resolveOutput(clean)
+      }
+    })
+  })
+}
+
+function terminateTree(child, signal) {
+  if (child.pid === undefined) return
+  try {
+    if (process.platform === 'win32') child.kill(signal)
+    else process.kill(-child.pid, signal)
+  } catch {
+    child.kill(signal)
+  }
 }
 
 async function startWeb() {
@@ -81,11 +123,14 @@ async function stopWeb() {
 }
 
 try {
+  console.log(`Installing Firstmate into an isolated DSH ${DSH_VERSION} Web profile...`)
   await run(['plugin', '--profile', 'web', 'add', project])
 
-  const config = await run(['web', '--dump-config'])
+  console.log('Verifying the composed DSH profile...')
+  const config = await run(['web', '--dump-config'], true)
   assert.match(config, /- id: firstmate\s+name: firstmate-dsh/)
 
+  console.log('Starting the isolated DSH Web host...')
   const url = await startWeb()
   const page = await fetch(url, { signal: AbortSignal.timeout(10_000) })
   assert.equal(page.status, 200, 'DSH Web root did not return HTTP 200')
