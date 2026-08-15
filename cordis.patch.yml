@@ -1,0 +1,11 @@
+# Firstmate bundle layer. The host service owns the persistent task ledger,
+# deterministic scheduler, DSH compatibility adapter, Remote API, and the
+# browser-plugin node half discovered through package.json#dsh.client.
+- insert:
+    - id: firstmate
+      name: firstmate-dsh
+      config:
+        subagentProvider: spawn
+        maxDepth: 1
+        maxRetries: 1
+        staleAfterMs: 900000

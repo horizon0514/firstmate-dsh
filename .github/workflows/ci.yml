@@ -8,12 +8,26 @@ permissions:
   contents: read
 
 jobs:
-  repository-foundation:
+  quality:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Verify repository foundation
-        run: |
-          test -f README.md
-          test -f LICENSE
-          test -f CONTRIBUTING.md
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Deterministic demo
+        run: npm run demo
+      - name: Build
+        run: npm run build
+      - name: Package smoke
+        run: npm run smoke:package
+      - name: DSH Web install and start smoke
+        run: npm run smoke:dsh

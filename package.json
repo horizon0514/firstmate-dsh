@@ -1,0 +1,129 @@
+{
+  "name": "firstmate-dsh",
+  "version": "0.1.0",
+  "description": "Manager-centric multi-task orchestration for DeepSeek Harness",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/firstmate-web/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./core": {
+      "types": "./lib/types/firstmate-core/index.d.ts",
+      "default": "./lib/firstmate-core/index.js"
+    },
+    "./manager": {
+      "types": "./lib/types/firstmate-manager/index.d.ts",
+      "default": "./lib/firstmate-manager/index.js"
+    },
+    "./dsh": {
+      "types": "./lib/types/firstmate-dsh/index.d.ts",
+      "default": "./lib/firstmate-dsh/index.js"
+    },
+    "./typert": {
+      "types": "./lib/types/firstmate-web/typert.d.ts",
+      "default": "./lib/firstmate-web/typert.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "author": "horizon0514",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/horizon0514/firstmate-dsh.git"
+  },
+  "homepage": "https://github.com/horizon0514/firstmate-dsh#readme",
+  "bugs": {
+    "url": "https://github.com/horizon0514/firstmate-dsh/issues"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ],
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "build": "npm run clean && tsc -p tsconfig.json && tsc -p tsconfig.client.json && tsdown",
+    "clean": "rm -rf lib coverage artifacts",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit && tsc -p tsconfig.tools.json --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "demo": "tsx scripts/demo.ts",
+    "smoke:package": "node scripts/package-smoke.mjs",
+    "smoke:dsh": "node scripts/dsh-smoke.mjs",
+    "gate": "npm run typecheck && npm run test && npm run build && npm run smoke:package"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "3.18.1",
+    "lucide-react": "0.468.0",
+    "zod": "4.4.3"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/dsh-agent": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-api-remotes": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-layout": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-sidebar": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-llm": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-session": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-session-persistence": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-subagent": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-typert-protocol": "0.1.0-rc.6",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/dsh-agent": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-api-remotes": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-layout": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-sidebar": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-llm": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-session": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-session-persistence": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-subagent": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-typert-protocol": "0.1.0-rc.6",
+    "@types/node": "24.3.0",
+    "@types/react": "18.3.23",
+    "@types/react-dom": "18.3.7",
+    "@vitest/coverage-v8": "3.2.4",
+    "jsdom": "26.1.0",
+    "lightningcss": "1.29.1",
+    "pnpm": "11.7.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "tsdown": "0.22.2",
+    "tsx": "4.20.5",
+    "typescript": "5.9.2",
+    "vitest": "3.2.4"
+  }
+}
