@@ -10,5 +10,7 @@ export interface WorkerProvider {
   restore(task: FirstmateTask, signal: AbortSignal): Promise<void>
   send(task: FirstmateTask, message: string, signal: AbortSignal): Promise<void>
   interrupt(task: FirstmateTask, reason: string): Promise<void>
+  /** Drops the per-task bookkeeping once a task reaches a terminal state. */
+  release(taskId: string): void
   subscribe(listener: (event: WorkerEvent) => void): () => void
 }

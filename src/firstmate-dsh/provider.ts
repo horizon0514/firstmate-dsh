@@ -23,11 +23,13 @@ type Listener = (event: WorkerEvent) => void
 export class DshWorkerProvider implements WorkerProvider {
   private readonly listeners = new Set<Listener>()
   private readonly taskByWorker = new Map<string, string>()
+  private readonly workerByTask = new Map<string, string>()
   private readonly taskById = new Map<string, FirstmateTask>()
   private readonly earlyEnds = new Map<string, SubagentRunEndInfo>()
   private readonly lastHeartbeat = new Map<string, number>()
   private readonly interruptWaiters = new Map<string, Set<() => void>>()
   private readonly parentHandles = new Map<string, AgentHandle>()
+  private pendingStarts = 0
   private disposing = false
 
   constructor(
@@ -51,24 +53,32 @@ export class DshWorkerProvider implements WorkerProvider {
     if (provider.prepareContinuable === undefined) {
       throw new Error(`DSH subagent provider "${this.config.subagentProvider}" does not support continuable workers`)
     }
-    const start = await this.ctx.subagents.startContinuable({
-      provider: this.config.subagentProvider,
-      label: `firstmate:${task.id}`,
-      request: {
-        prompt: [{ type: 'text', text: initialWorkerPrompt(task) }],
-        parent,
-        persona: FIRSTMATE_WORKER_PERSONA,
-        maxDepth: this.config.maxDepth,
-        agentOptions: {
-          ...(this.config.agentProvider === undefined ? {} : { provider: this.config.agentProvider }),
-          ...(this.config.model === undefined ? {} : { model: this.config.model }),
+    // `subagent/end` can fire for the new child before startContinuable resolves with its
+    // id, so early ends are only worth buffering while a start is actually in flight.
+    this.pendingStarts += 1
+    try {
+      const start = await this.ctx.subagents.startContinuable({
+        provider: this.config.subagentProvider,
+        label: `firstmate:${task.id}`,
+        request: {
+          prompt: [{ type: 'text', text: initialWorkerPrompt(task) }],
+          parent,
+          persona: FIRSTMATE_WORKER_PERSONA,
+          maxDepth: this.config.maxDepth,
+          agentOptions: {
+            ...(this.config.agentProvider === undefined ? {} : { provider: this.config.agentProvider }),
+            ...(this.config.model === undefined ? {} : { model: this.config.model }),
+          },
         },
-      },
-      signal,
-    })
-    this.track(task, start.childId)
-    this.flushEarlyEnd(start.childId)
-    return { workerId: start.childId, provider: this.config.subagentProvider }
+        signal,
+      })
+      this.track(task, start.childId)
+      this.flushEarlyEnd(start.childId)
+      return { workerId: start.childId, provider: this.config.subagentProvider }
+    } finally {
+      this.pendingStarts -= 1
+      if (this.pendingStarts === 0) this.earlyEnds.clear()
+    }
   }
 
   async restore(task: FirstmateTask, signal: AbortSignal): Promise<void> {
@@ -136,6 +146,15 @@ export class DshWorkerProvider implements WorkerProvider {
     await settled
   }
 
+  release(taskId: string): void {
+    const workerId = this.workerByTask.get(taskId)
+    if (workerId !== undefined) {
+      this.workerByTask.delete(taskId)
+      this.forgetWorker(workerId)
+    }
+    this.taskById.delete(taskId)
+  }
+
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
@@ -144,6 +163,11 @@ export class DshWorkerProvider implements WorkerProvider {
   async dispose(): Promise<void> {
     this.disposing = true
     this.listeners.clear()
+    this.taskByWorker.clear()
+    this.workerByTask.clear()
+    this.taskById.clear()
+    this.earlyEnds.clear()
+    this.lastHeartbeat.clear()
     for (const waiters of this.interruptWaiters.values()) {
       for (const resolve of waiters) resolve()
     }
@@ -163,7 +187,7 @@ export class DshWorkerProvider implements WorkerProvider {
     this.resolveInterrupts(info.id)
     const taskId = this.taskByWorker.get(info.id)
     if (taskId === undefined) {
-      this.earlyEnds.set(info.id, info)
+      if (this.pendingStarts > 0) this.earlyEnds.set(info.id, info)
       return
     }
     const task = this.taskById.get(taskId)
@@ -206,8 +230,17 @@ export class DshWorkerProvider implements WorkerProvider {
   }
 
   private track(task: FirstmateTask, workerId: string): void {
+    const previous = this.workerByTask.get(task.id)
+    if (previous !== undefined && previous !== workerId) this.forgetWorker(previous)
+    this.workerByTask.set(task.id, workerId)
     this.taskByWorker.set(workerId, task.id)
     this.taskById.set(task.id, task)
+  }
+
+  private forgetWorker(workerId: string): void {
+    this.taskByWorker.delete(workerId)
+    this.lastHeartbeat.delete(workerId)
+    this.earlyEnds.delete(workerId)
   }
 
   private flushEarlyEnd(workerId: string): void {

@@ -10,12 +10,14 @@ export class FakeWorkerProvider implements WorkerProvider {
   readonly startedTaskIds: string[] = []
   readonly restoredTaskIds: string[] = []
   readonly interruptedTaskIds: string[] = []
+  readonly releasedTaskIds: string[] = []
   readonly messages: FakeWorkerMessage[] = []
 
   private readonly listeners = new Set<(event: WorkerEvent) => void>()
   private readonly workers = new Map<string, string>()
   private readonly startFailures = new Map<string, Error>()
   private readonly sendFailures = new Map<string, Error>()
+  private readonly interruptFailures = new Map<string, Error>()
   private sequence = 0
 
   async start(task: FirstmateTask, signal: AbortSignal): Promise<WorkerStart> {
@@ -49,8 +51,17 @@ export class FakeWorkerProvider implements WorkerProvider {
   }
 
   async interrupt(task: FirstmateTask, reason: string): Promise<void> {
+    const failure = this.interruptFailures.get(task.id)
+    if (failure !== undefined) {
+      this.interruptFailures.delete(task.id)
+      throw failure
+    }
     this.interruptedTaskIds.push(task.id)
     this.interrupted(task.id, reason)
+  }
+
+  release(taskId: string): void {
+    this.releasedTaskIds.push(taskId)
   }
 
   subscribe(listener: (event: WorkerEvent) => void): () => void {
@@ -64,6 +75,10 @@ export class FakeWorkerProvider implements WorkerProvider {
 
   failNextSend(taskId: string, error: Error = new Error('fake send failure')): void {
     this.sendFailures.set(taskId, error)
+  }
+
+  failNextInterrupt(taskId: string, error: Error = new Error('fake interrupt failure')): void {
+    this.interruptFailures.set(taskId, error)
   }
 
   decision(taskId: string, question: string, at = new Date().toISOString()): void {

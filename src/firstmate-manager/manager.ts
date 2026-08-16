@@ -35,11 +35,7 @@ export class FirstmateManager {
     }
     if (request.tasks.length > 20) throw new Error('A single submission is limited to 20 tasks')
     const tasks = await Promise.all(request.tasks.map(input => this.createTask(input)))
-    const known = new Set([...this.ledger.list().map(task => task.id), ...tasks.map(task => task.id)])
-    for (const task of tasks) {
-      const unknown = task.dependsOn.find(id => !known.has(id) || id === task.id)
-      if (unknown !== undefined) throw new Error(`Task ${task.id} has an unknown or self dependency: ${unknown}`)
-    }
+    assertSchedulableDependencies(tasks, this.ledger.list())
     await this.ledger.createMany(tasks)
     await this.scheduler.pump()
     return { taskIds: tasks.map(task => task.id) }
@@ -125,6 +121,29 @@ export class FirstmateManager {
 
   private timestamp(): string {
     return this.now().toISOString()
+  }
+}
+
+/**
+ * The scheduler only clears a dependency when the blocking task reaches `completed`, so an
+ * edge onto a task that can never complete is a silent permanent deadlock in `queued`.
+ * Task ids are generated here, so a submission can only point at tasks that already exist:
+ * the graph stays acyclic by construction and only the edge targets need checking.
+ */
+function assertSchedulableDependencies(
+  tasks: readonly FirstmateTask[],
+  existing: readonly FirstmateTask[],
+): void {
+  const byId = new Map<string, FirstmateTask>([...existing, ...tasks].map(task => [task.id, task]))
+  for (const task of tasks) {
+    for (const id of task.dependsOn) {
+      if (id === task.id) throw new Error(`Task ${task.id} cannot depend on itself`)
+      const dependency = byId.get(id)
+      if (dependency === undefined) throw new Error(`Task ${task.id} has an unknown dependency: ${id}`)
+      if (dependency.status === 'cancelled') {
+        throw new Error(`Task ${task.id} depends on cancelled task ${id}, which can never complete`)
+      }
+    }
   }
 }
 

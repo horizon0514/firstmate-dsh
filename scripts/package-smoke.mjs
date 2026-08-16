@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
@@ -36,12 +38,30 @@ try {
   await execFileAsync('npm', [
     'install', '--ignore-scripts', '--no-audit', '--no-fund', '--legacy-peer-deps', tarball,
   ], { cwd: consumer, maxBuffer: 4 * 1024 * 1024 })
-  const installed = JSON.parse(await readFile(join(consumer, 'node_modules', 'firstmate-dsh', 'package.json'), 'utf8'))
+  const dependency = join(consumer, 'node_modules', 'firstmate-dsh')
+  const installed = JSON.parse(await readFile(join(dependency, 'package.json'), 'utf8'))
   assert.equal(installed.version, '0.1.0')
-  const core = await import(join(consumer, 'node_modules', 'firstmate-dsh', 'lib', 'firstmate-core', 'index.js'))
+
+  // Resolve every export from the consumer, never from this repo: a bare specifier
+  // resolved here self-references the project's own lib/ and would assert nothing about
+  // the packed tarball or its export map.
+  const consumerRequire = createRequire(join(consumer, 'package.json'))
+  const resolveInstalled = (specifier) => {
+    const resolved = consumerRequire.resolve(specifier)
+    assert(
+      resolved.startsWith(`${dependency}/`),
+      `${specifier} resolved outside the installed package: ${resolved}`,
+    )
+    return pathToFileURL(resolved).href
+  }
+  for (const specifier of ['firstmate-dsh', 'firstmate-dsh/client', 'firstmate-dsh/manager', 'firstmate-dsh/dsh']) {
+    resolveInstalled(specifier)
+  }
+
+  const core = await import(resolveInstalled('firstmate-dsh/core'))
   assert.equal(typeof core.TaskLedger, 'function')
   assert.equal(typeof core.FirstmateScheduler, 'function')
-  const { TYPERT } = await import('firstmate-dsh/typert')
+  const { TYPERT } = await import(resolveInstalled('firstmate-dsh/typert'))
   assert.equal(TYPERT.package, 'firstmate-dsh')
   assert.equal(TYPERT.invocations.length, 6)
   console.log(`Package smoke passed: ${basename(tarball)} packs, installs, and exposes the core API.`)

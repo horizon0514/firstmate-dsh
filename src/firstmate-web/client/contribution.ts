@@ -37,12 +37,19 @@ function query(method: string, result: TypertCodec): InvocationDescriptor {
   }
 }
 
-function command(method: string, parse: (value: unknown) => unknown, result: TypertCodec): InvocationDescriptor {
+// The request type symbol has to be the one the Host publishes in typert.ts, not one
+// derived from the method name — DSH matches routes on the symbol, not on the method.
+function command(
+  method: string,
+  requestType: string,
+  parse: (value: unknown) => unknown,
+  result: TypertCodec,
+): InvocationDescriptor {
   const parameter: InvocationParameterDescriptor = {
     name: 'request',
     wire: 'request',
     source: 'json',
-    codec: strict(`${OWNER}#${method}Request`, parse),
+    codec: strict(`${OWNER}#${requestType}`, parse),
   }
   return { ...query(method, result), parameters: [parameter] }
 }
@@ -66,28 +73,28 @@ export const FIRSTMATE_REMOTE: TypertRemoteContribution = {
       object('Firstmate snapshot counts')(snapshot.counts)
       return snapshot
     })),
-    command('submit', value => {
+    command('submit', 'SubmitTasksRequest', value => {
       const request = object('Firstmate submission')(value) as { tasks?: unknown }
       if (!Array.isArray(request.tasks) || request.tasks.length === 0) {
         throw new TypeError('Firstmate submission needs tasks')
       }
       return request
     }, strict(`${OWNER}#SubmitTasksResult`, object('Firstmate submission result'))),
-    command('decision', value => {
+    command('decision', 'DecisionResponseRequest', value => {
       const request = taskAction('Firstmate decision')(value) as { answer?: unknown }
       if (typeof request.answer !== 'string' || request.answer.trim() === '') {
         throw new TypeError('Firstmate decision needs an answer')
       }
       return request
     }, strict(`${OWNER}#Void`, voidResult)),
-    command('review', value => {
+    command('review', 'ReviewActionRequest', value => {
       const request = taskAction('Firstmate review')(value) as { action?: unknown }
       if (!['accept', 'revise', 'cancel'].includes(String(request.action))) {
         throw new TypeError('Firstmate review needs a supported action')
       }
       return request
     }, strict(`${OWNER}#Void`, voidResult)),
-    command('retry', taskAction('Firstmate retry'), strict(`${OWNER}#Void`, voidResult)),
-    command('cancel', taskAction('Firstmate cancellation'), strict(`${OWNER}#Void`, voidResult)),
+    command('retry', 'TaskActionRequest', taskAction('Firstmate retry'), strict(`${OWNER}#Void`, voidResult)),
+    command('cancel', 'TaskActionRequest', taskAction('Firstmate cancellation'), strict(`${OWNER}#Void`, voidResult)),
   ],
 }

@@ -82,6 +82,11 @@ export class FirstmateService extends TypertRemoteService {
       onError: error => ctx.logger.error(`firstmate scheduler: ${renderError(error)}`),
     })
     this.ready = this.initialize()
+    // Mark the rejection as handled here: a corrupt ledger must fail the requests that
+    // await `ready`, not take down the DSH host with an unhandled rejection.
+    this.ready.catch((error: unknown) => {
+      ctx.logger.error(`firstmate initialization failed: ${renderError(error)}`)
+    })
     ctx.effect(() => async () => {
       await this.ready.catch(() => undefined)
       await this.scheduler.stop()
