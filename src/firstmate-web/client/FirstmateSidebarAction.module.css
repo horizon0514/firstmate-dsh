@@ -1,0 +1,27 @@
+.action {
+  width: 100%;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 9px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #59636e);
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.action:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(40, 52, 64, 0.08));
+  color: var(--dsw-alias-label-primary, #17212b);
+}
+
+.action:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary, #16847a);
+  outline-offset: 2px;
+}

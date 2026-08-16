@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.client.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "types": ["node", "vitest/globals"]
+  },
+  "include": [
+    "src",
+    "tests",
+    "scripts",
+    "tsdown.config.ts",
+    "vitest.config.ts"
+  ],
+  "exclude": ["lib", "node_modules"]
+}
