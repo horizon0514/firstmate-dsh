@@ -98,6 +98,12 @@ Remote changes must remain synchronized across:
 
 The real DSH smoke calls `/api/firstmate/snapshot`, so a missing Host export or endpoint registration fails CI.
 
+## Release process
+
+The release workflow is tag-driven and requires the tag to equal `v` plus `package.json#version`. For example, version `0.1.0` must use `v0.1.0`.
+
+After the normal CI on `main` passes, a maintainer may create and push the approved tag. GitHub Actions then runs the acceptance gate, packs the npm-compatible tarball, installs that tarball into a fresh DSH Web profile, uploads the package and `SHA256SUMS` as a workflow artifact, and creates the GitHub Release. The workflow does not publish to npm and needs no registry token.
+
 ## Contribution discipline
 
 Keep DSH API calls behind the adapter boundary, add regression coverage proportional to the behavior changed, and do not commit credentials, runtime ledgers, transcripts, or build output. Firstmate development must not modify DSH core or add automatic merge/deploy behavior to the MVP.

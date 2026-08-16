@@ -29,4 +29,4 @@
 
 ## Continuing non-goals
 
-Firstmate is not planned as a terminal wall, tmux manager, generic office assistant, multi-runtime abstraction, or autonomous deployment system. Automatic merge, deployment, npm publication, and release creation remain outside the product's trust boundary unless introduced later as explicit, separately approved capabilities.
+Firstmate is not planned as a terminal wall, tmux manager, generic office assistant, multi-runtime abstraction, or autonomous deployment system. Automatic merge, deployment, and npm publication remain outside the product's runtime trust boundary. Maintainer-approved tags may create validated GitHub Release artifacts through CI; they do not grant the runtime any publication capability.

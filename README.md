@@ -33,14 +33,29 @@ Prerequisites:
 - DeepSeek Harness `0.1.0-rc.6`
 - Git for review evidence
 
+## Install a release package
+
+The package is not published to npm. Each maintainer-approved GitHub Release includes an npm-compatible tarball and `SHA256SUMS`; the release workflow installs that exact tarball into a fresh DSH Web profile before publishing it.
+
+```sh
+curl -LO https://github.com/horizon0514/firstmate-dsh/releases/download/v0.1.0/firstmate-dsh-0.1.0.tgz
+curl -LO https://github.com/horizon0514/firstmate-dsh/releases/download/v0.1.0/SHA256SUMS
+sha256sum -c SHA256SUMS
+
+dsh plugin --profile web add ./firstmate-dsh-0.1.0.tgz
+dsh web --host 127.0.0.1 --port 3080
+```
+
+On macOS, use `shasum -a 256 -c SHA256SUMS` for the checksum step.
+
 ## Install from source
 
-The MVP has not been published to npm. Build the checkout, then add it to the DSH Web profile:
+To develop from a checkout, build it before adding it to the DSH Web profile:
 
 ```sh
 git clone https://github.com/horizon0514/firstmate-dsh.git
 cd firstmate-dsh
-git checkout feat/firstmate-mvp
+git checkout v0.1.0
 npm ci
 npm run build
 
@@ -105,7 +120,7 @@ Defaults live in [`cordis.patch.yml`](./cordis.patch.yml). Override the `firstma
 - Worker transcripts remain in DSH sessions and are intentionally hidden; there is no advanced diagnostics link in the MVP UI.
 - The ledger is a single local JSON document, intended for one DSH process rather than distributed coordination.
 - A valid DSH model/provider configuration is required for real workers. Tests, the demo, and smoke checks do not require one.
-- Firstmate never merges, deploys, publishes packages, or creates releases.
+- The Firstmate runtime never merges, deploys, publishes npm packages, or creates releases. Maintainer-approved tags use GitHub Actions to produce GitHub Release artifacts.
 
 ## Documentation
 

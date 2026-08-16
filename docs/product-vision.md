@@ -35,7 +35,7 @@ The MVP is for independent developers, technical founders, and small teams that:
 - **Sparse interruption:** routine progress and internal recovery do not demand attention.
 - **Inspectable results:** review packages include files, Git evidence, tests, risks, and unfinished work.
 - **Native composition:** use DSH extension points and do not fork or modify DSH core.
-- **Human release control:** no automatic merge, deployment, package publication, or release.
+- **Human release control:** the runtime never merges, deploys, or publishes. Maintainer-approved tags may produce validated GitHub Release artifacts through CI.
 
 ## MVP boundary
 

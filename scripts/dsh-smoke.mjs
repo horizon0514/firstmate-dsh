@@ -9,6 +9,7 @@ const COMMAND_TIMEOUT_MS = 15 * 60_000
 const START_TIMEOUT_MS = 90_000
 const MAX_OUTPUT_CHARS = 8 * 1024 * 1024
 const project = resolve(import.meta.dirname, '..')
+const installSpec = process.env.FIRSTMATE_DSH_INSTALL_SPEC ?? project
 const dshHome = await mkdtemp(join(tmpdir(), 'firstmate-dsh-smoke-'))
 const executable = process.platform === 'win32' ? 'npx.cmd' : 'npx'
 const environment = { ...process.env, DSH_HOME: dshHome }
@@ -152,7 +153,7 @@ function waitForExit(child, timeoutMs) {
 
 try {
   console.log(`Installing Firstmate into an isolated DSH ${DSH_VERSION} Web profile...`)
-  await run(['plugin', '--profile', 'web', 'add', project])
+  await run(['plugin', '--profile', 'web', 'add', installSpec])
 
   console.log('Verifying the composed DSH profile...')
   const config = await run(['web', '--dump-config'], true)
