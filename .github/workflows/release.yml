@@ -62,7 +62,7 @@ jobs:
       - name: Publish package to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish "$PACKAGE_PATH" --access public --provenance
+        run: npm publish "$GITHUB_WORKSPACE/$PACKAGE_PATH" --access public --provenance
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
