@@ -102,7 +102,9 @@ The real DSH smoke calls `/api/firstmate/snapshot`, so a missing Host export or 
 
 The release workflow is tag-driven and requires the tag to equal `v` plus `package.json#version`. For example, version `0.1.0` must use `v0.1.0`.
 
-After the normal CI on `main` passes, a maintainer may create and push the approved tag. GitHub Actions then runs the acceptance gate, packs the npm-compatible tarball, installs that tarball into a fresh DSH Web profile, uploads the package and `SHA256SUMS` as a workflow artifact, and creates the GitHub Release. The workflow does not publish to npm and needs no registry token.
+After the normal CI on `main` passes, a maintainer may create and push the approved tag. GitHub Actions then runs the acceptance gate, packs the npm-compatible tarball, installs that tarball into a fresh DSH Web profile, publishes the exact artifact to npm with provenance, uploads the package and `SHA256SUMS` as a workflow artifact, and creates the GitHub Release. Publishing requires an npm automation token in the `NPM_TOKEN` Actions secret.
+
+The manual `workflow_dispatch` entry accepts an existing tag so a failed npm publication can be retried without moving or recreating the tag. It repeats all validation and packaging steps but leaves the existing GitHub Release unchanged.
 
 ## Contribution discipline
 

@@ -33,9 +33,16 @@ MVP 仅对 **DeepSeek Harness `0.1.0-rc.6`** 做了精确验证。DSH 仍处于 
 - DeepSeek Harness `0.1.0-rc.6`
 - Git，用于收集验收证据
 
-## 安装 Release 包
+## 从 npm 安装
 
-该包尚未发布到 npm。每个由维护者明确批准的 GitHub Release 都包含 npm-compatible tarball 和 `SHA256SUMS`；release workflow 会先把这个实际 tarball 安装到全新的 DSH Web profile 并完成冒烟，再对外发布。
+每个由维护者明确批准的 release 都会把同一份验证过的 tarball 发布到 npm 和 GitHub Releases。workflow 会先把打包产物安装到全新的 DSH Web profile 并完成冒烟，再对外发布。
+
+```sh
+dsh plugin --profile web add firstmate-dsh@0.1.0
+dsh web --host 127.0.0.1 --port 3080
+```
+
+GitHub Releases 也提供 tarball 和 `SHA256SUMS`，可直接安装：
 
 ```sh
 curl -LO https://github.com/horizon0514/firstmate-dsh/releases/download/v0.1.0/firstmate-dsh-0.1.0.tgz
@@ -120,7 +127,7 @@ npm run smoke:dsh
 - 工人完整过程保留在 DSH Session 中并默认隐藏；MVP 没有高级诊断入口。
 - 账本是单机 JSON 文档，面向单个 DSH 进程，不提供分布式协调。
 - 真实工人需要有效的 DSH 模型/provider 配置；测试、演示和冒烟不需要。
-- Firstmate 运行时不会自动合并、部署、发布 npm 包或创建 Release；维护者明确批准的 tag 由 GitHub Actions 生成 GitHub Release 产物。
+- Firstmate 运行时不会自动合并、部署、发布 npm 包或创建 Release；维护者明确批准的 tag 由 GitHub Actions 发布验证过的 npm 和 GitHub Release 产物。
 
 ## 详细文档
 

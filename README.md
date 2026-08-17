@@ -33,9 +33,16 @@ Prerequisites:
 - DeepSeek Harness `0.1.0-rc.6`
 - Git for review evidence
 
-## Install a release package
+## Install from npm
 
-The package is not published to npm. Each maintainer-approved GitHub Release includes an npm-compatible tarball and `SHA256SUMS`; the release workflow installs that exact tarball into a fresh DSH Web profile before publishing it.
+Each maintainer-approved release publishes the same validated tarball to npm and GitHub Releases. The workflow installs the packed artifact into a fresh DSH Web profile before publishing it.
+
+```sh
+dsh plugin --profile web add firstmate-dsh@0.1.0
+dsh web --host 127.0.0.1 --port 3080
+```
+
+GitHub Releases also provides the tarball and `SHA256SUMS` for direct installation:
 
 ```sh
 curl -LO https://github.com/horizon0514/firstmate-dsh/releases/download/v0.1.0/firstmate-dsh-0.1.0.tgz
@@ -120,7 +127,7 @@ Defaults live in [`cordis.patch.yml`](./cordis.patch.yml). Override the `firstma
 - Worker transcripts remain in DSH sessions and are intentionally hidden; there is no advanced diagnostics link in the MVP UI.
 - The ledger is a single local JSON document, intended for one DSH process rather than distributed coordination.
 - A valid DSH model/provider configuration is required for real workers. Tests, the demo, and smoke checks do not require one.
-- The Firstmate runtime never merges, deploys, publishes npm packages, or creates releases. Maintainer-approved tags use GitHub Actions to produce GitHub Release artifacts.
+- The Firstmate runtime never merges, deploys, publishes npm packages, or creates releases. Maintainer-approved tags use GitHub Actions to publish validated npm and GitHub Release artifacts.
 
 ## Documentation
 

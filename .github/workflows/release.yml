@@ -4,9 +4,19 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish
+        required: true
+        type: string
 
 permissions:
   contents: write
+  id-token: write
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 concurrency:
   group: release-${{ github.ref }}
@@ -17,17 +27,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
+          registry-url: https://registry.npmjs.org
       - name: Validate release tag
         shell: bash
         run: |
           expected="v$(node -p "require('./package.json').version")"
-          if [[ "$GITHUB_REF_NAME" != "$expected" ]]; then
-            echo "release tag $GITHUB_REF_NAME does not match package version $expected" >&2
+          if [[ "$RELEASE_TAG" != "$expected" ]]; then
+            echo "release tag $RELEASE_TAG does not match package version $expected" >&2
             exit 1
           fi
       - name: Install dependencies
@@ -46,18 +59,23 @@ jobs:
           sha256sum "$(basename "$package_path")" > SHA256SUMS
       - name: Smoke install packed artifact in DSH Web
         run: FIRSTMATE_DSH_INSTALL_SPEC="$GITHUB_WORKSPACE/$PACKAGE_PATH" npm run smoke:dsh
+      - name: Publish package to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish "$PACKAGE_PATH" --access public --provenance
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: firstmate-dsh-${{ github.ref_name }}
+          name: firstmate-dsh-${{ env.RELEASE_TAG }}
           path: release/
           if-no-files-found: error
       - name: Create GitHub Release
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
-          gh release create "$GITHUB_REF_NAME"
+          gh release create "$RELEASE_TAG"
           release/*.tgz release/SHA256SUMS
           --verify-tag
           --generate-notes
-          --title "Firstmate for DeepSeek Harness $GITHUB_REF_NAME"
+          --title "Firstmate for DeepSeek Harness $RELEASE_TAG"
