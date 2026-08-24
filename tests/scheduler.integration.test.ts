@@ -191,6 +191,83 @@ describe('Firstmate scheduler integration', () => {
     expect(suite.workers.startedTaskIds).toEqual([task.id])
   })
 
+  it('still cancels a task whose worker refuses to stop', async () => {
+    const suite = await setup()
+    const { taskIds: [taskId, queuedId] } = await suite.manager.submit({ tasks: [
+      input('Unresponsive task', suite.workspaceA),
+      input('Waiting task', suite.workspaceA),
+    ] })
+    suite.workers.failNextInterrupt(taskId!, new Error('worker did not stop within 30 seconds'))
+
+    await suite.manager.cancel(taskId!)
+
+    expect(suite.ledger.get(taskId!)?.status).toBe('cancelled')
+    expect(suite.ledger.get(taskId!)?.history.at(-1)?.reason).toContain('interrupt failed')
+    expect(suite.workers.releasedTaskIds).toContain(taskId)
+    // The workspace lock must come back, otherwise nothing in it can ever run again.
+    expect(suite.ledger.get(queuedId!)?.status).toBe('running')
+  })
+
+  it('releases worker bookkeeping once a task is accepted', async () => {
+    const suite = await setup()
+    const { taskIds: [taskId] } = await suite.manager.submit({ tasks: [input('Accepted task', suite.workspaceA)] })
+    suite.workers.review(taskId!, reviewFixture())
+    await vi.waitFor(() => expect(suite.ledger.get(taskId!)?.status).toBe('review_ready'))
+
+    await suite.manager.review({ taskId: taskId!, action: 'accept' })
+    expect(suite.workers.releasedTaskIds).toEqual([taskId])
+  })
+
+  it('ignores a late worker failure instead of restarting a task awaiting a decision', async () => {
+    const suite = await setup()
+    const { taskIds: [taskId] } = await suite.manager.submit({ tasks: [input('Deciding task', suite.workspaceA)] })
+    suite.workers.decision(taskId!, 'Which database should this use?')
+    await vi.waitFor(() => expect(suite.ledger.get(taskId!)?.status).toBe('decision_required'))
+
+    suite.workers.fail(taskId!, 'worker process exited')
+    await vi.waitFor(() => expect(suite.ledger.get(taskId!)?.history.at(-1)?.reason)
+      .toContain('ignored worker failure while decision_required'))
+
+    expect(suite.ledger.get(taskId!)).toMatchObject({ status: 'decision_required', retryCount: 0 })
+    expect(suite.workers.messages).toEqual([])
+
+    // The decision still lands on the same worker once the user answers.
+    await suite.manager.answerDecision(taskId!, 'Use SQLite')
+    expect(suite.ledger.get(taskId!)?.status).toBe('running')
+    expect(suite.workers.messages.at(-1)?.message).toContain('User decision: Use SQLite')
+  })
+
+  it('restarts the heartbeat clock on an automatic retry', async () => {
+    let current = new Date('2026-08-15T08:00:00.000Z')
+    const suite = await setup({ maxRetries: 1, now: () => current })
+    const { taskIds: [taskId] } = await suite.manager.submit({ tasks: [input('Retried task', suite.workspaceA)] })
+
+    current = new Date('2026-08-15T08:00:30.000Z')
+    suite.workers.fail(taskId!, 'temporary transport error')
+    await vi.waitFor(() => expect(suite.ledger.get(taskId!)).toMatchObject({ status: 'running', retryCount: 1 }))
+    expect(suite.ledger.get(taskId!)?.worker?.lastHeartbeatAt).toBe('2026-08-15T08:00:30.000Z')
+
+    // 45s after the retry is well inside the 60s stale window, so the sweep must not fire.
+    current = new Date('2026-08-15T08:01:15.000Z')
+    await suite.scheduler.recoverStale(current)
+    expect(suite.ledger.get(taskId!)).toMatchObject({ status: 'running', retryCount: 1 })
+    expect(suite.workers.interruptedTaskIds).toEqual([])
+  })
+
+  it('rejects a dependency that can never complete', async () => {
+    const suite = await setup()
+    const { taskIds: [blockerId] } = await suite.manager.submit({ tasks: [input('Blocker', suite.workspaceA)] })
+    await suite.manager.cancel(blockerId!)
+
+    await expect(suite.manager.submit({ tasks: [
+      { ...input('Dependent', suite.workspaceB), dependsOn: [blockerId!] },
+    ] })).rejects.toThrow(/depends on cancelled task .* which can never complete/)
+    await expect(suite.manager.submit({ tasks: [
+      { ...input('Orphan', suite.workspaceB), dependsOn: ['task-that-does-not-exist'] },
+    ] })).rejects.toThrow('unknown dependency: task-that-does-not-exist')
+    expect(suite.manager.snapshot().tasks.filter(task => task.status !== 'cancelled')).toEqual([])
+  })
+
   it('ignores lifecycle events from a stale worker identity', async () => {
     const suite = await setup()
     const running = taskFixture({

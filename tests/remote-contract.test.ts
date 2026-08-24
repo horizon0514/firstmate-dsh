@@ -18,6 +18,29 @@ function parse(codec: TypertCodec, value: unknown): unknown {
   return codec.schema.parse(value)
 }
 
+interface WireSymbols {
+  readonly id: string
+  readonly result: string | undefined
+  readonly parameters: readonly (string | undefined)[]
+}
+
+interface MaybeStrictCodec {
+  readonly mode: string
+  readonly typeSymbol?: string
+}
+
+function symbolsOf(entry: {
+  readonly id: string
+  readonly result: MaybeStrictCodec
+  readonly parameters: readonly { readonly codec: MaybeStrictCodec }[]
+}): WireSymbols {
+  return {
+    id: entry.id,
+    result: entry.result.typeSymbol,
+    parameters: entry.parameters.map(parameter => parameter.codec.typeSymbol),
+  }
+}
+
 describe('Firstmate Host/Client Remote contract', () => {
   it('mirrors every host method with a direct strict descriptor', () => {
     const methods = ['cancel', 'decision', 'retry', 'review', 'snapshot', 'submit']
@@ -49,6 +72,26 @@ describe('Firstmate Host/Client Remote contract', () => {
       expect(entry.result.mode).toBe('strict')
       expect('_zod' in entry.result.schema).toBe(true)
     }
+  })
+
+  it('agrees with the Host on every wire type symbol', () => {
+    // DSH routes on the type symbol, so a Client symbol derived from the method name
+    // silently fails to bind to the Host descriptor it is meant to call.
+    const hostSymbols = TYPERT.invocations.map(entry => symbolsOf(entry))
+    const clientSymbols = FIRSTMATE_REMOTE.descriptors.map(entry => symbolsOf(entry))
+    expect(clientSymbols).toEqual(hostSymbols)
+    expect(hostSymbols).toContainEqual({
+      id: 'firstmate-dsh#firstmate/submit',
+      result: 'firstmate-dsh#SubmitTasksResult',
+      parameters: ['firstmate-dsh#SubmitTasksRequest'],
+    })
+    expect(clientSymbols.flatMap(entry => entry.parameters)).toEqual([
+      'firstmate-dsh#SubmitTasksRequest',
+      'firstmate-dsh#DecisionResponseRequest',
+      'firstmate-dsh#ReviewActionRequest',
+      'firstmate-dsh#TaskActionRequest',
+      'firstmate-dsh#TaskActionRequest',
+    ])
   })
 
   it('validates command arguments and wire results', () => {

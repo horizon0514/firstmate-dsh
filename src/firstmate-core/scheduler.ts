@@ -91,6 +91,7 @@ export class FirstmateScheduler {
       if (current.status !== 'review_ready') throw new Error(`Task ${taskId} is not ready for review`)
       return transitionTask(current, 'completed', 'user accepted the result', at)
     })
+    this.workers.release(taskId)
     await this.pump()
   }
 
@@ -138,8 +139,18 @@ export class FirstmateScheduler {
     if (task.status === 'completed' || task.status === 'cancelled') return
     this.cancelling.add(taskId)
     try {
-      if (task.worker !== undefined) await this.workers.interrupt(task, 'user cancelled the task')
-      await this.ledger.update(taskId, current => transitionTask(current, 'cancelled', 'user cancelled the task', this.timestamp()))
+      let reason = 'user cancelled the task'
+      if (task.worker !== undefined) {
+        try {
+          await this.workers.interrupt(task, reason)
+        } catch (error: unknown) {
+          // The user asked for the task to stop; an unreachable worker must not keep
+          // the task running and holding its workspace lock forever.
+          reason += `; interrupt failed: ${messageOf(error)}`
+        }
+      }
+      await this.ledger.update(taskId, current => transitionTask(current, 'cancelled', reason, this.timestamp()))
+      this.workers.release(taskId)
       await this.pump()
     } finally {
       this.cancelling.delete(taskId)
@@ -174,6 +185,9 @@ export class FirstmateScheduler {
       }
       try {
         await this.workers.restore(task, new AbortController().signal)
+        // The worker is live again, so the heartbeat clock restarts here; keeping the
+        // pre-restart stamp would let the first stale sweep interrupt a healthy worker.
+        await this.touchHeartbeat(task.id)
       } catch (error: unknown) {
         await this.handleFailure(task.id, `restart recovery failed: ${messageOf(error)}`)
       }
@@ -272,7 +286,20 @@ export class FirstmateScheduler {
   private async handleFailure(taskId: string, reason: string): Promise<void> {
     const at = this.timestamp()
     const task = await this.ledger.update(taskId, current => {
-      if (current.status !== 'running') return current
+      if (current.status !== 'running') {
+        // A late failure for a task the user or the worker already moved on from. Record
+        // it, but never restart a worker behind the back of a pending decision or review.
+        return {
+          ...current,
+          updatedAt: at,
+          history: [...current.history, {
+            at,
+            from: current.status,
+            to: current.status,
+            reason: `ignored worker failure while ${current.status}: ${reason}`,
+          }],
+        }
+      }
       const retryCount = current.retryCount + 1
       if (retryCount > this.options.maxRetries) {
         return {
@@ -285,10 +312,15 @@ export class FirstmateScheduler {
         ...current,
         retryCount,
         updatedAt: at,
+        // The retry restarts the heartbeat clock: leaving the stale stamp would let the
+        // next stale sweep re-fail this task and burn the whole retry budget at once.
+        ...current.worker === undefined ? {} : { worker: { ...current.worker, lastHeartbeatAt: at } },
         history: [...current.history, { at, from: 'running', to: 'running', reason: `automatic retry ${retryCount}: ${reason}` }],
       }
     })
-    if (task.status === 'blocked') return
+    // Only the automatic-retry branch leaves the task running; an ignored late failure and
+    // an exhausted retry budget both stop here rather than reaching for the worker.
+    if (task.status !== 'running') return
     if (task.worker === undefined) {
       await this.ledger.update(taskId, current => transitionTask(current, 'queued', 'retry worker creation', this.timestamp()))
       void this.pump().catch(this.onError)
@@ -299,6 +331,13 @@ export class FirstmateScheduler {
     } catch (error: unknown) {
       await this.setBlocked(taskId, `retry delivery failed: ${messageOf(error)}`, this.timestamp())
     }
+  }
+
+  private async touchHeartbeat(taskId: string): Promise<void> {
+    const at = this.timestamp()
+    await this.ledger.update(taskId, current => current.worker === undefined
+      ? current
+      : { ...current, updatedAt: at, worker: { ...current.worker, lastHeartbeatAt: at } })
   }
 
   private async sendOrRecover(task: FirstmateTask, message: string, failure: string): Promise<void> {

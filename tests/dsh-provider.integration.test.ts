@@ -140,6 +140,20 @@ describe('DshWorkerProvider', () => {
 
     await provider.interrupt(running, 'test cancellation')
     expect(events.at(-1)).toMatchObject({ type: 'interrupted', taskId: 'dsh-task', workerId: 'fake-child-1' })
+
+    // A terminal task drops its bookkeeping instead of pinning it for the host's lifetime.
+    provider.release('dsh-task')
+    const afterRelease = events.length
+    callbacks.get('session/event')?.({ id: 'fake-child-1' }, { type: 'turn/start' })
+    callbacks.get('subagent/end')?.({
+      id: 'fake-child-1',
+      runId: 'run-late',
+      provider: 'spawn',
+      stopReason: 'failed',
+    })
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(events).toHaveLength(afterRelease)
+
     await provider.dispose()
     expect(createdHandles[0]?.dispose).toHaveBeenCalledOnce()
     await rm(workspace, { recursive: true, force: true })

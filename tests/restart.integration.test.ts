@@ -6,6 +6,7 @@ import { FakeWorkerProvider } from '../src/firstmate-core/fake-worker-provider.t
 import { TaskLedger } from '../src/firstmate-core/ledger.ts'
 import { FirstmateScheduler } from '../src/firstmate-core/scheduler.ts'
 import { FirstmateManager } from '../src/firstmate-manager/manager.ts'
+import { taskFixture } from './helpers.ts'
 
 describe('DSH restart recovery', () => {
   it('restores a durable running worker and preserves queued work', async () => {
@@ -46,6 +47,41 @@ describe('DSH restart recovery', () => {
       expect(secondLedger.get(result.taskIds[1]!)?.status).toBe('queued')
     } finally {
       await secondScheduler.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('restarts the heartbeat clock so downtime does not look like a stalled worker', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'firstmate-restart-heartbeat-'))
+    const workspace = join(root, 'workspace')
+    await mkdir(workspace)
+    const ledger = new TaskLedger(join(root, 'ledger.json'))
+    await ledger.init()
+    // DSH was down for an hour, so the persisted heartbeat is far outside the stale window.
+    await ledger.createMany([taskFixture({
+      id: 'downtime-task',
+      workspace,
+      status: 'running',
+      worker: { id: 'durable-worker', provider: 'fake', attempt: 1, lastHeartbeatAt: '2026-08-15T08:00:00.000Z' },
+    })])
+
+    const workers = new FakeWorkerProvider()
+    const scheduler = new FirstmateScheduler(ledger, workers, {
+      maxRetries: 1,
+      staleAfterMs: 60_000,
+      heartbeatIntervalMs: 3_600_000,
+      now: () => new Date('2026-08-15T09:00:00.000Z'),
+    })
+    await scheduler.start()
+    try {
+      expect(workers.restoredTaskIds).toEqual(['downtime-task'])
+      expect(ledger.get('downtime-task')?.worker?.lastHeartbeatAt).toBe('2026-08-15T09:00:00.000Z')
+
+      await scheduler.recoverStale(new Date('2026-08-15T09:00:30.000Z'))
+      expect(ledger.get('downtime-task')).toMatchObject({ status: 'running', retryCount: 0 })
+      expect(workers.interruptedTaskIds).toEqual([])
+    } finally {
+      await scheduler.stop()
       await rm(root, { recursive: true, force: true })
     }
   })
