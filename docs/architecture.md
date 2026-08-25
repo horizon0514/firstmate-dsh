@@ -1,5 +1,7 @@
 # Architecture
 
+> **Status:** this document describes the delivered multi-task orchestration implementation in `src/`. The project direction has changed; see `docs/product-vision.md`. This document is rewritten once the new behavior is implemented.
+
 ## System view
 
 ```text
